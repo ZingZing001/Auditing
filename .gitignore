@@ -10,3 +10,7 @@ wheels/
 .venv
 
 /data
+
+# Experiment outputs (regenerate by running the scripts)
+experiments/*.log
+experiments/*.csv
