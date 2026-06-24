@@ -1,7 +1,5 @@
 from collections import deque
 
-import jax
-import jax.numpy as jnp
 import numpy as np
 import polars as pl
 from art.attacks.evasion import DecisionTreeAttack
@@ -28,6 +26,11 @@ def make_data(n_samples, noise, type="moons", SEED=42):
             n_samples=n_samples, noise=noise, random_state=SEED, shuffle=True
         )
     else:
+        # jax is only needed for the checkerboard generator; import lazily so the
+        # rest of util (tree/SVM auditing) loads without a working jax install.
+        import jax
+        import jax.numpy as jnp
+
         key = jax.random.PRNGKey(SEED)
         key1, key2 = jax.random.split(key)
         X = jax.random.uniform(
@@ -49,6 +52,41 @@ def labelencoding(X):
         X[:, i] = le.fit_transform(X[:, i])
     X = X.astype(int)
     return X
+
+
+def cluster_density(points):
+    """Compactness/DENSITY score for a single cluster of points.
+
+    Returns ``n_pairs / (total_pairwise_separation + 1)`` over the true
+    upper-triangular set of unique point pairs. Higher = tighter cluster.
+    Returns 0.0 for clusters with fewer than two points. This is a density,
+    not a distance, despite the historical ``adv distance`` column name.
+    """
+    points = np.asarray(points).reshape(len(points), -1)
+    n = points.shape[0]
+    if n < 2:
+        return 0.0
+    total = 0.0
+    count = 0
+    for a in range(n):
+        for b in range(a + 1, n):
+            total += np.linalg.norm(points[a] - points[b]).item()
+            count += 1
+    return count / (total + 1)
+
+
+def adv_cluster_stats(x_adv, min_samples: int = 5):
+    """Cluster adversarial points with OPTICS and summarise compactness.
+
+    Returns ``(n_clusters, densities)`` where ``n_clusters`` is the number of
+    OPTICS clusters (noise label -1 excluded) and ``densities`` is the list of
+    per-cluster :func:`cluster_density` scores. ``min_samples`` is exposed so the
+    clustering can be stability-swept at the small fold sizes used here.
+    """
+    clustering = OPTICS(min_samples=min_samples).fit(x_adv)
+    labels = np.unique(clustering.labels_[clustering.labels_ != -1])
+    densities = [cluster_density(x_adv[clustering.labels_ == lab]) for lab in labels]
+    return len(labels), densities
 
 
 def audit_tree(
@@ -159,6 +197,7 @@ def audit_tree_bias(
     dbscan: bool = False,
     target_bias: int = 0,
     over: bool = False,
+    min_samples: int = 5,
 ):
     # acc_queue = deque(maxlen=stopping)
     # acc_queue.extend([0,.1])
@@ -206,8 +245,10 @@ def audit_tree_bias(
 
         if over:
             if mask.sum() <= 5:
-                extra = np.random.choice(
-                    range(X_train[y_train.squeeze(1) == target_bias].shape[0]),
+                # seeded RNG so the oversampling top-up is reproducible
+                rng = np.random.default_rng(SEED)
+                extra = rng.choice(
+                    X_train[y_train.squeeze(1) == target_bias].shape[0],
                     replace=False,
                     size=5,
                 )
@@ -253,38 +294,14 @@ def audit_tree_bias(
         distances = []
 
         if dbscan:
-            clustering = OPTICS().fit(x_attack_adv)
-            labels = np.unique(clustering.labels_[clustering.labels_ != -1])
-            for i in labels:
-                idx = np.argwhere(clustering.labels_ == i)
-                group = x_attack_adv[idx]
-                distance = 0
-                count = 0
-                if group.shape[0] > 1:
-                    # FIX 1 (pairing): iterate the true upper-triangular set of
-                    # unique point pairs. The old loop reset `i = 0` and used
-                    # `group[i + 1 :]` without ever advancing `i`, so it always
-                    # sliced `group[1:]` -> self-pairs and double-counted pairs,
-                    # inflating both `count` and `distance`.
-                    # FIX 2 (Frobenius): measure the gap BETWEEN the two points.
-                    # `np.linalg.norm((point1, point2))` was the Frobenius norm of
-                    # the stacked 2xd matrix = combined magnitude from the origin,
-                    # not the separation -> the score was location-dependent (same
-                    # cluster shape scored differently near vs. far from origin).
-                    points = group.reshape(group.shape[0], -1)
-                    for a in range(points.shape[0]):
-                        for b in range(a + 1, points.shape[0]):
-                            distance += np.linalg.norm(points[a] - points[b]).item()
-                            count += 1
-                    # NOTE: this is a compactness/DENSITY score (pairs / total
-                    # separation; higher = tighter), not a distance, despite the
-                    # "adv distance" column name. The inversion is intentional;
-                    # only the stale column name is left for the humans to rename.
-                    distance = count / (distance + 1)
-                    distances.append(distance)
-                else:
-                    distances.append(0)
-            clusters.append(len(labels))
+            # OPTICS-cluster the adversarial points; `distances` holds the
+            # per-cluster compactness/DENSITY scores (see adv_cluster_stats /
+            # cluster_density). `min_samples` is passed through so the clustering
+            # can be stability-swept at the small fold sizes used here.
+            n_clusters, distances = adv_cluster_stats(
+                x_attack_adv, min_samples=min_samples
+            )
+            clusters.append(n_clusters)
         else:
             for idx, attack_data in enumerate(x_attack_adv):
                 true_label = y_test[idx]
