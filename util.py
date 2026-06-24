@@ -258,14 +258,28 @@ def audit_tree_bias(
             for i in labels:
                 idx = np.argwhere(clustering.labels_ == i)
                 group = x_attack_adv[idx]
-                i = 0
                 distance = 0
                 count = 0
                 if group.shape[0] > 1:
-                    for point1 in group:
-                        for point2 in group[i + 1 :]:
-                            distance += np.linalg.norm((point1, point2)).item()
+                    # FIX 1 (pairing): iterate the true upper-triangular set of
+                    # unique point pairs. The old loop reset `i = 0` and used
+                    # `group[i + 1 :]` without ever advancing `i`, so it always
+                    # sliced `group[1:]` -> self-pairs and double-counted pairs,
+                    # inflating both `count` and `distance`.
+                    # FIX 2 (Frobenius): measure the gap BETWEEN the two points.
+                    # `np.linalg.norm((point1, point2))` was the Frobenius norm of
+                    # the stacked 2xd matrix = combined magnitude from the origin,
+                    # not the separation -> the score was location-dependent (same
+                    # cluster shape scored differently near vs. far from origin).
+                    points = group.reshape(group.shape[0], -1)
+                    for a in range(points.shape[0]):
+                        for b in range(a + 1, points.shape[0]):
+                            distance += np.linalg.norm(points[a] - points[b]).item()
                             count += 1
+                    # NOTE: this is a compactness/DENSITY score (pairs / total
+                    # separation; higher = tighter), not a distance, despite the
+                    # "adv distance" column name. The inversion is intentional;
+                    # only the stale column name is left for the humans to rename.
                     distance = count / (distance + 1)
                     distances.append(distance)
                 else:
