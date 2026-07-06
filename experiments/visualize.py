@@ -138,8 +138,8 @@ def draw_scene(ax, defect, model_name, seed=42, severity=0.5):
     ax.legend(loc="upper right", fontsize=7, framealpha=0.9)
 
 
-def fig_scenes(defects=("coverage_gap", "label_noise_50"), models=("tree", "mlp"),
-               seed=42, severity=0.5, fname="scenes.png"):
+def fig_scenes(defects=("coverage_gap", "label_noise_50", "label_noise_100"),
+               models=("tree", "mlp"), seed=42, severity=0.5, fname="scenes.png"):
     fig, axes = plt.subplots(len(defects), len(models),
                              figsize=(6.2 * len(models), 5.0 * len(defects)))
     axes = np.atleast_2d(axes)

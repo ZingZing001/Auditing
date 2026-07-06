@@ -6,6 +6,45 @@ for Aolin + research partner + supervisor (Joerg Wicker), not settled here.*
 
 ---
 
+## ADDENDUM (post-gate results — 2026-07-06): the plan's empirical questions are
+## answered; the claim redefines
+
+Phases 1 and 2 have been run (full tables and figures:
+`experiments/README.md`, `experiments/figures/`). Outcome:
+
+1. **The gate failed for the original claim** — adversarial examples
+   *anti-localize* coverage gaps (AUROC 0.24–0.40 across all 5 model×attack
+   combos vs 0.98 for a trivial density baseline), robustly (= data-mediated,
+   not a tree-attack artifact).
+2. **The mechanism's predicted sign-flip is real** — contested label noise
+   *attracts* adversarial examples (AUROC 0.63–0.82, 5/5 combos), coherent
+   100%-flips do not (~0.37). Adversarial geometry reads **local boundary
+   contention**: gaps repel boundaries, disagreement attracts them, coherent
+   errors relocate them cleanly.
+3. **Detection is dominated by cheap statistics on every defect tested**
+   (sparsity 0.98 on gaps; kNN disagreement/label-entropy ~0.99 on noise;
+   entropy also reproduces the noise-100 blindness with no model or attack).
+4. **Coherent systematic mislabeling is invisible to every internal signal**
+   — an epistemic limit, not a method failure.
+
+**Redefined thesis claim [ratify]:** a controlled, mechanistic characterization
+of what adversarial-example geometry actually measures — the model's boundary
+contention, not dataset quality — with the sign-flip taxonomy as the central
+result and the baseline-dominance analysis as the practical guidance
+(audit datasets with cheap statistics; adversarial "quality" tools measure the
+model). A rigorous result of this shape is publishable and thesis-complete.
+
+**Remaining work under the redefined claim:** harden the taxonomy (feature
+corruption, outliers, non-slab region shapes, a second dataset family,
+a dimensionality spot-check), formalise the boundary-action framing, and write
+up. The ACG strand stays available as a complementary scalar **[ratify]**.
+
+The original plan below is retained for provenance; its Phase 2′
+(characterization) branch is now the active path, entered with a *positive*
+mechanistic finding rather than a bare negative.
+
+---
+
 ## 1. Status
 
 - Density metric was doubly-broken (Frobenius + pairing); fixed and tested.

@@ -110,3 +110,76 @@ ACG scalar strand. One motivated follow-up before closing the door: *label noise
 attracts boundary fragments rather than repelling them, so the taxonomy prediction
 flips - adversarial examples may localize noise even though they cannot localize
 gaps. Whether to run that is a human call.
+
+Figures: `figures/phase1_auroc_bars.png`, `figures/phase1_calibration.png`,
+`figures/scenes.png` (mechanism, all defect types).
+
+## Phase 2 - defect taxonomy: the sign-flip test
+
+### `phase2_defect_taxonomy.py` (network-free)
+
+Same harness, region definition R, model x attack matrix and scoring code path as
+Phase 1 (helpers imported from it), with the defect injector varied over the SAME
+region: `coverage_gap` (delete training points in R - Phase 1 replication),
+`label_noise_50` (flip 50% of training labels in R - contested region), and
+`label_noise_100` (flip all - coherent systematic mislabeling). Mechanism
+prediction: gaps repel boundaries (AUROC < 0.5), contested regions attract them
+(AUROC > 0.5).
+
+```
+.venv/Scripts/python experiments/phase2_defect_taxonomy.py
+.venv/Scripts/python experiments/phase2_entropy_baseline.py   # honesty check
+```
+
+### What Phase 2 found (this run)
+
+Mean adv-density localization AUROC (3 seeds x 5 severities):
+
+| model x attack | coverage_gap | label_noise_50 | label_noise_100 |
+|---|---|---|---|
+| tree x DecisionTreeAttack | 0.237 | **0.678** | 0.303 |
+| tree x HopSkipJump        | 0.307 | **0.820** | 0.368 |
+| svm x FGM                 | 0.401 | **0.655** | 0.506 |
+| svm x HopSkipJump         | 0.389 | **0.627** | 0.366 |
+| mlp x HopSkipJump         | 0.397 | **0.774** | 0.367 |
+
+1. **The sign flips for contested noise - 5/5 combos** (gap < 0.5 < noise50),
+   robust across models and attacks, i.e. data-mediated. The mechanism holds:
+   adversarial examples read out *local boundary contention*.
+2. **Coherent mislabeling (noise100) does NOT flip** (~0.37) - with 100% flips
+   there is no contest; the boundary redraws cleanly around the region's edge
+   (see `figures/scenes.png`, bottom row). Adversarial geometry detects
+   *disagreement*, not "wrongness".
+3. **Baseline blindness is complementary:** data sparsity sees gaps (0.98) but is
+   blind to both noise types (0.51); kNN disagreement sees both noise types
+   (0.99) but cannot separate contested from coherent; only the adversarial
+   signal's sign separates noise50 from noise100 among the attack-based signals.
+4. **Honesty check (`phase2_entropy_baseline.py`):** a no-model, no-attack kNN
+   label-entropy statistic scores gap 0.63 / noise50 0.99 / noise100 0.41 - it
+   *detects contested noise far better than the adversarial signal* (0.99 vs
+   ~0.71) and reproduces the noise100 blindness. Detection, for every defect
+   tested, is dominated by cheap training-set statistics.
+5. Severity calibration: noise50 localization strengthens with severity for 4/5
+   combos; noise100 weakens with severity (more coherent = cleaner redraw) -
+   both consistent with the mechanism.
+
+### Where this leaves the research claim
+
+- The original hypothesis ("adversarial examples cluster in weak regions") is
+  false as stated: the direction depends on the defect's *boundary action* -
+  gaps repel, contested labels attract, coherent flips relocate cleanly.
+- The sign-flip is a real, robust, mechanism-predicted phenomenon - but as a
+  *detector*, adversarial geometry is dominated by cheap statistics (sparsity
+  for gaps; disagreement/entropy/uncertainty for noise) on every defect tested.
+- Coherent systematic mislabeling is invisible to EVERY internal signal tested
+  (adversarial, sparsity, entropy, uncertainty ~ 0.4-0.5; disagreement only sees
+  it because the test labels are clean) - detecting it requires external
+  knowledge, an epistemic limit worth stating in the write-up.
+- The defensible contribution is therefore the **mechanistic characterization**:
+  adversarial-example geometry measures the model's boundary contention, not
+  dataset quality; adversarial-based "data quality" tools should be expected to
+  inherit exactly this signature. Whether to frame the thesis this way is a
+  human call.
+
+Figures: `figures/phase2_auroc_bars.png`, `figures/phase2_calibration.png`,
+`figures/scenes.png`.
