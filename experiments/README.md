@@ -183,3 +183,25 @@ Mean adv-density localization AUROC (3 seeds x 5 severities):
 
 Figures: `figures/phase2_auroc_bars.png`, `figures/phase2_calibration.png`,
 `figures/scenes.png`.
+
+### Aiden's metric, made visible
+
+`visualize.py --density` renders the original OPTICS + pair-density method on the
+controlled defects (`figures/density_clusters.png`,
+`figures/density_vs_severity.png`). What it shows, concretely:
+
+- The tree attack snaps adversarial points onto the tree's axis-aligned
+  thresholds, so they form thin straight lines; OPTICS shatters those lines into
+  13-46 micro-clusters, and both the count and the mean density swing wildly
+  with `min_samples` (e.g. coverage-gap mean density 12.7 / 20.5 / 36.9 at
+  min_samples 3 / 5 / 8) - the fragility, visually.
+- Per-cluster density values span 2.6 to 877 within a single panel, and the
+  severity chart is dominated by a ~1750 spike: when many attacked points snap
+  to the SAME threshold, pairwise separations approach zero and the
+  pairs/(separation+1) score explodes. The metric rewards near-duplicate
+  stacking, not meaningful tightness.
+- Neither cluster count nor mean density orders the defect types or tracks
+  severity coherently - while the spatial layout in the same panels plainly
+  shows the contested-region concentration that the localization AUROC captures.
+  The information is in WHERE the points are; the scalar clustering summary
+  destroys it.

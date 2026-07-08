@@ -234,10 +234,158 @@ def fig_calibration(csv, fname):
     print(f"wrote {out}")
 
 
+# ------------------------------------------- Aiden-style density visuals
+def _run_config(defect, model_name="tree", seed=42, severity=0.5):
+    """Train on injected data and attack a test subsample; returns pieces
+    needed to plot. Mirrors the phase1/phase2 pipeline for one config."""
+    from sklearn.model_selection import train_test_split
+    from sklearn.tree import DecisionTreeClassifier
+
+    from art.attacks.evasion import DecisionTreeAttack
+    from art.estimators.classification.scikitlearn import (
+        ScikitlearnDecisionTreeClassifier,
+    )
+
+    from phase2_defect_taxonomy import (
+        ATTACK_SUBSAMPLE,
+        FEATURE,
+        N_SAMPLES,
+        NOISE,
+        TARGET,
+        TEST_FRAC,
+        inject,
+    )
+    from util import make_data
+
+    X, y = make_data(N_SAMPLES, NOISE, "moons", SEED=seed)
+    X_tr, X_te, y_tr, y_te = train_test_split(
+        X, y, test_size=TEST_FRAC, stratify=y, random_state=seed
+    )
+    rng = np.random.default_rng(seed * 1000 + int(severity * 10))
+    Xb, yb, cutoff = inject(X_tr, y_tr, defect, TARGET, FEATURE, severity, rng)
+    model = DecisionTreeClassifier(max_depth=10, random_state=seed).fit(Xb, yb)
+    wrapper = ScikitlearnDecisionTreeClassifier(
+        model=model, clip_values=(float(X.min()), float(X.max()))
+    )
+    sub = np.random.default_rng(seed).choice(
+        len(X_te), size=min(ATTACK_SUBSAMPLE, len(X_te)), replace=False
+    )
+    X_adv = DecisionTreeAttack(classifier=wrapper, verbose=False).generate(x=X_te[sub])
+    return Xb, yb, X_adv, cutoff
+
+
+def fig_density_clusters(seed=42, severity=0.5, fname="density_clusters.png"):
+    """Aiden's method, made visible: OPTICS clusters over the adversarial
+    points, each cluster annotated with the (corrected) pair-density score.
+    Rows = defect type, columns = OPTICS min_samples (the fragility knob)."""
+    from sklearn.cluster import OPTICS
+
+    from phase2_defect_taxonomy import DEFECTS
+    from util import cluster_density
+
+    ms_values = [3, 5, 8]
+    fig, axes = plt.subplots(len(DEFECTS), len(ms_values),
+                             figsize=(5.4 * len(ms_values), 4.6 * len(DEFECTS)))
+    cmap = plt.get_cmap("tab10")
+
+    for i, defect in enumerate(DEFECTS):
+        print(f"  density clusters: {defect}")
+        Xb, yb, X_adv, cutoff = _run_config(defect, seed=seed, severity=severity)
+        for j, ms in enumerate(ms_values):
+            ax = axes[i, j]
+            labels = OPTICS(min_samples=ms).fit(X_adv).labels_
+            clust_ids = [c for c in np.unique(labels) if c != -1]
+
+            # context: training data faint, region cutoff dashed
+            ax.scatter(*Xb[yb == 0].T, s=3, c="#1f77b4", alpha=0.15, lw=0)
+            ax.scatter(*Xb[yb == 1].T, s=3, c="#ff7f0e", alpha=0.15, lw=0)
+            ax.axvline(cutoff, color="0.3", ls="--", lw=0.8)
+
+            noise = X_adv[labels == -1]
+            ax.scatter(*noise.T, s=10, marker="x", c="0.6", lw=0.7,
+                       label=f"noise ({len(noise)})")
+            sizes = {c: int((labels == c).sum()) for c in clust_ids}
+            biggest = sorted(clust_ids, key=lambda c: -sizes[c])[:5]
+            densities = []
+            for k, c in enumerate(clust_ids):
+                pts = X_adv[labels == c]
+                d = cluster_density(pts)
+                densities.append(d)
+                ax.scatter(*pts.T, s=14, color=cmap(k % 10), lw=0)
+                if c in biggest:  # annotate only the 5 largest, or labels pile up
+                    cx, cy = pts.mean(axis=0)
+                    ax.annotate(f"d={d:.1f}", (cx, cy), fontsize=9,
+                                fontweight="bold", color="k",
+                                bbox=dict(boxstyle="round,pad=0.15", fc="white",
+                                          ec="0.6", alpha=0.85))
+            mean_d = np.mean(densities) if densities else 0.0
+            ax.set_title(f"{defect} | min_samples={ms}\n"
+                         f"clusters={len(clust_ids)}, mean density={mean_d:.2f} "
+                         "(labels: 5 largest)",
+                         fontsize=10)
+            ax.set_xticks([]), ax.set_yticks([])
+            ax.legend(loc="lower right", fontsize=7, framealpha=0.9)
+
+    fig.suptitle(
+        "Aiden's metric, made visible: OPTICS clusters of adversarial points,\n"
+        "annotated with the corrected pair-density score "
+        f"(tree + DecisionTreeAttack, severity={severity}, seed={seed})",
+        fontsize=13,
+    )
+    fig.tight_layout(rect=[0, 0, 1, 0.94])
+    out = os.path.join(FIGDIR, fname)
+    fig.savefig(out, dpi=150)
+    plt.close(fig)
+    print(f"wrote {out}")
+
+
+def fig_density_vs_severity(seed_list=(42, 125, 58), fname="density_vs_severity.png"):
+    """Aiden's two headline numbers (cluster count, mean density) as line
+    charts vs injected severity - his chart style on controlled defects."""
+    from phase2_defect_taxonomy import DEFECTS, SEVERITIES
+    from util import adv_cluster_stats
+
+    colors = {"coverage_gap": "#7f7f7f", "label_noise_50": "#d62728",
+              "label_noise_100": "#2ca02c"}
+    fig, (ax_c, ax_d) = plt.subplots(1, 2, figsize=(12.5, 4.6))
+    for defect in DEFECTS:
+        print(f"  density vs severity: {defect}")
+        counts, dens = [], []
+        for sev in SEVERITIES:
+            cs, ds = [], []
+            for seed in seed_list:
+                _, _, X_adv, _ = _run_config(defect, seed=seed, severity=sev)
+                n, dlist = adv_cluster_stats(X_adv, min_samples=5)
+                cs.append(n)
+                ds.append(np.mean(dlist) if dlist else 0.0)
+            counts.append(np.mean(cs))
+            dens.append(np.mean(ds))
+        ax_c.plot(SEVERITIES, counts, marker="o", ms=4, color=colors[defect],
+                  label=defect)
+        ax_d.plot(SEVERITIES, dens, marker="o", ms=4, color=colors[defect],
+                  label=defect)
+    ax_c.set_xlabel("severity"), ax_c.set_ylabel("OPTICS cluster count")
+    ax_c.set_title("cluster COUNT vs severity", fontsize=11)
+    ax_d.set_xlabel("severity"), ax_d.set_ylabel("mean pair-density (higher = tighter)")
+    ax_d.set_title("mean cluster DENSITY vs severity", fontsize=11)
+    ax_d.legend(fontsize=9)
+    fig.suptitle(
+        "Aiden's headline metrics on controlled defects "
+        "(tree + DecisionTreeAttack, min_samples=5, mean over 3 seeds)",
+        fontsize=12,
+    )
+    fig.tight_layout(rect=[0, 0, 1, 0.90])
+    out = os.path.join(FIGDIR, fname)
+    fig.savefig(out, dpi=150)
+    plt.close(fig)
+    print(f"wrote {out}")
+
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--phase", choices=["1", "2"], default=None)
     p.add_argument("--scenes", action="store_true")
+    p.add_argument("--density", action="store_true")
     p.add_argument("--all", action="store_true")
     args = p.parse_args()
 
@@ -253,6 +401,10 @@ def main():
     if args.scenes or args.all:
         with open(os.devnull, "w") as devnull, contextlib.redirect_stderr(devnull):
             fig_scenes()
+    if args.density or args.all:
+        with open(os.devnull, "w") as devnull, contextlib.redirect_stderr(devnull):
+            fig_density_clusters()
+            fig_density_vs_severity()
 
 
 if __name__ == "__main__":
