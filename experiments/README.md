@@ -184,6 +184,61 @@ Mean adv-density localization AUROC (3 seeds x 5 severities):
 Figures: `figures/phase2_auroc_bars.png`, `figures/phase2_calibration.png`,
 `figures/scenes.png`.
 
+## Phase 3 - real datasets: where the story breaks
+
+### `phase3_real_data.py`, `phase3_no_defect_control.py` (UCI fetches + sklearn)
+
+Same protocol as Phase 2 (inject a known defect into a recorded region, attack
+three model families, score localization against baselines), on three real
+datasets: breast-cancer tumour records (569x30), banknote authentication
+(1372x4), and a numeric subset of Adult census income (4000x6). Features
+standardized; region = low tail of the most label-correlated feature (fixed
+rule, no per-result cherry-picking); severities {0.3,0.5,0.7}; 3 seeds.
+
+```
+.venv/Scripts/python experiments/phase3_real_data.py
+.venv/Scripts/python experiments/phase3_no_defect_control.py   # placebo check
+.venv/Scripts/python experiments/visualize_real.py             # plain-language figures
+```
+
+### What Phase 3 found (this run) - the skeptical read
+
+1. **The toy sign taxonomy does NOT transfer.** Census income: everything is
+   chance (0.47-0.54) - no signal either way. Banknote and tumour records: the
+   gap-avoidance REVERSES (adv 0.62-0.78 - adversarial points land *near*
+   deleted regions). Only "contested labels attract" survives directionally on
+   all three datasets, and weakly (0.54-0.75 means, not every combo).
+2. **The placebo control deflates most of the apparent real-data "detection".**
+   With NOTHING injected, the adversarial score against the same region is
+   already 0.53 / 0.585 / 0.564 (census / banknote / tumour). The region sits in
+   the low tail of the most label-correlated feature - i.e. near the natural
+   class overlap, which is where adversarial points land anyway. Tumour-record
+   "detections" (0.59-0.62) are barely above their 0.56 placebo.
+3. **Attack practicality degrades on real data.** HopSkipJump vs the DECISION
+   TREE does not reliably terminate in 30 dimensions (piecewise-constant output
+   starves its step-size search; one run burned 7.5 CPU-hours before being
+   killed - the black-box attack now runs only vs smooth models). Flip rates
+   crater: SVM x HSJ succeeds on only 11-27% of points on census, 25-61% on
+   tumour records (vs ~100% on the toy).
+4. **Cheap statistics still dominate every dataset and defect** - neighbour-label
+   disagreement 0.78-1.00, sparsity finds gaps, entropy finds contested labels,
+   and even plain model confidence beats the adversarial signal almost
+   everywhere it has signal at all.
+
+**Bottom line: on real data the adversarial signal's direction is
+dataset-dependent, much of its apparent magnitude is a region-placement
+artifact, its attack machinery is fragile, and it never beats trivial
+baselines.** This *strengthens* the central characterization - adversarial
+examples map the model's boundary, and what the boundary does depends on the
+dataset's local geometry - while closing the door on "adversarial localization
+as a practical dataset auditor". Limitations of our own study: injected (not
+naturally occurring) defects, one region shape, binary tasks, three datasets,
+3 seeds.
+
+Figures (plain-language, for non-specialists): `figures/real_verdict.png`
+(the verdict grid incl. placebo column), `figures/real_bars.png` (vs simple
+checks), `figures/real_projection.png` (2-D view of where attacks land).
+
 ### Aiden's metric, made visible
 
 `visualize.py --density` renders the original OPTICS + pair-density method on the
