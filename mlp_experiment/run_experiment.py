@@ -77,6 +77,23 @@ PROTOCOLS = ['before_split', 'train_only']
 OL_K = [2, 4, 6, 8]
 OL_N = [5, 10]
 OL_DIR = ['toward', 'outward', 'random']
+# --ceiling: push the dose toward and past the class-size ceiling at k=8, the cell Thread A used.
+# The train fold holds 40 points/class, so these are 50 / 75 / 100 / 150% of the target class.
+# {20,30,40} mirror model_family's OL_N_CEILING exactly for comparability; 60 goes past anything
+# tested so far. Motivation: rbf-SVM was null at low dose but rose to 1.09x at the ceiling with
+# accuracy degrading 0.97->0.89 (FINDINGS_outlier.md F3) — the MLP is the other global model.
+OL_N_CEILING = [20, 30, 40, 60]
+OL_K_CEILING = 8.0
+# --dose: FIX the distance, sweep the count. Motivated by F5 (FINDINGS_phase0.md): the MLP's only
+# real response is at NEAR field and runs DOWNWARD (compression), not upward -- deepfool `toward`
+# gives 0.85x at k=2, 0.96x at k=4, 1.01x at k=8, and is already dose-dependent at k=2
+# (n=5 -> 0.90x, n=10 -> 0.85x). k=2 puts the injected points 0.88 cm out, 55% of the
+# virginica->versicolor centroid gap, i.e. INSIDE versicolor: contamination, not an anomaly.
+# k=4 (109% of the gap, just past versicolor's centre) is the contrast arm. `outward` at matched
+# dose is the null control -- it isolates "points in the contested overlap" from "more points".
+K_DOSE = [2.0, 4.0]
+N_DOSE = [1, 3, 5, 10, 20, 30, 40, 60]
+DIR_DOSE = ['toward', 'outward']
 
 # ---- model + attack config (PLAN.md §2) ----
 HIDDEN, EPOCHS, LR = (16, 16), 300, 1e-2
@@ -226,6 +243,14 @@ def build_grid():
         for d, k, n in product(OL_DIR, OL_K, OL_N):
             jobs.append(blank(defect='outlier', protocol='train_only', k=float(k),
                               n_out=n, direction=d, seed=s))
+        if '--ceiling' in sys.argv:
+            for d, n in product(OL_DIR, OL_N_CEILING):
+                jobs.append(blank(defect='outlier', protocol='train_only', k=OL_K_CEILING,
+                                  n_out=n, direction=d, seed=s))
+        if '--dose' in sys.argv:
+            for d, k, n in product(DIR_DOSE, K_DOSE, N_DOSE):
+                jobs.append(blank(defect='outlier', protocol='train_only', k=k,
+                                  n_out=n, direction=d, seed=s))
     return jobs
 
 

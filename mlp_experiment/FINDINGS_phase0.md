@@ -102,12 +102,60 @@ Two conclusions, both cleaner than the hypothesis they replace:
    point forces a dedicated axis-aligned tendril that the minimal-perturbation attack walks into —
    rather than a general property of adversarial geometry.
 
-**H7 (dose-response) accordingly fails**: flat in `k` for both attacks and both directions
-(the only cell clearing 1.0 is HSJ/`toward`/`k=6` at 1.07×, isolated and not part of a trend).
-The MLP does not react even at gross 8σ distance, so the F5 question — whether a more sensitive
-model detects *realistic* 2–3σ outliers — is answered negatively for this model.
+The H6 refutation is unaffected by F5 below: `outward` is null at *every* distance, and `toward`
+at `k=8` — genuine far-field, 3.53 cm from the centroid — is null too.
 
-## F5 — Tentative: `random` direction is the only outlier cell that moves
+**Correction (H7).** An earlier draft of this document recorded H7 as "no dose-response at all,
+flat in `k` for both attacks and both directions". That was wrong. It scanned only for spread
+*above* 1.0 and filed everything else as null, discarding a clean monotonic trend running in the
+**compression** direction. See F5.
+
+## F5 — The MLP detects near-field CONTAMINATION by compressing, not far-field outliers (H7 ↺)
+
+At small `k` the `toward` injection does not produce an outlier at all. Measured geometry:
+
+| | distance | as % of the virginica→versicolor centroid gap (1.62 cm) |
+|---|---|---|
+| `k=2` | 0.88 cm | **55%** — deep inside the versicolor cloud |
+| `k=4` | 1.77 cm | **109%** — past versicolor's centre |
+| `k=8` | 3.53 cm | 218% — out the far side, genuine empty space |
+
+So `k=2, toward` injects 10 points **labelled virginica but physically sitting inside
+versicolor**. That is contamination — label noise placed precisely in the contested overlap —
+not an anomaly. DeepFool responds, and responds *downward*:
+
+| attack | k=2 | k=4 | k=8 |
+|---|---|---|---|
+| **DeepFool** (`n_out=10`) | **0.85× [0.79, 0.91]** | 0.96× [0.90, 1.01] | 1.01× [0.91, 1.11] |
+| HSJ (`n_out=10`) | 1.02× [0.96, 1.09] | 1.02× [0.90, 1.14] | 1.01× [0.91, 1.11] |
+
+Monotonic in `k`, and dose-dependent at fixed `k=2`: `n_out=5` → 0.90× [0.80, 1.01],
+`n_out=10` → **0.85×**. `nclust` (~3.8) and `clust_size` (~5.7) barely move, so these are
+genuinely tighter clusters, not a clustering artifact.
+
+**Mechanism.** Contamination drags the boundary into the dense contested band and anchors it
+there. DeepFool walks each test point to its *nearest* boundary, so every adversarial point piles
+into that band → tighter cloud. HSJ starts from a random far point and estimates direction by
+Monte-Carlo sampling, so it does not reliably find the nearest boundary and the compression is
+smeared away. Same white-box/black-box asymmetry as Thread A's `toward` signal on trees, but
+expressed as compression rather than expansion.
+
+**Accuracy is an inverted U, which corroborates the mechanism:** clean 0.957 → `k=2` 0.953 →
+**`k=4` 0.907 (worst)** → `k=8` 0.951. At `k=2` the bad points sit where the boundary already is,
+so the model absorbs them cheaply; at `k=4` they are planted in the heart of versicolor, maximum
+confusion; at `k=8` they are isolated again and get carved off without disturbing the real
+boundary.
+
+This maps the outlier/contamination frontier that
+[`FINDINGS_phase05.md`](../outlier_experiment/FINDINGS_phase05.md) flagged as "itself worth
+mapping" after observing accuracy dip at extreme `toward` injection. The frontier for `tc=2` sits
+near **`k ≈ 3.7`** (where `k·s` equals the centroid gap).
+
+**Consequence for the F5 question in Thread A** — whether a more sensitive model detects
+*realistic* 2–3σ outliers: still **no**. A realistic outlier is far-field and same-labelled; the
+MLP is null there. What it detects at `k=2` is a different defect wearing the outlier's clothes.
+
+## F6 — Tentative: `random` direction is the only far-field outlier cell that moves
 
 DeepFool `random` at the strong cell is **1.15× [1.04,1.27]** while HSJ `random` is 1.01× (null).
 This echoes the one non-null RF cell in Thread B (`random` **1.13× [1.02,1.24]`,
@@ -119,7 +167,7 @@ with no dose-response behind it, so it is exactly the shape of a multiple-compar
 Thread A's own lesson (an n=3 conclusion that flipped at n=10) argues for a dedicated
 `random`-only grid before anything is claimed.
 
-## F6 — H4 ✅: the MLP escapes the flat-facet hang trap entirely
+## F7 — H4 ✅: the MLP escapes the flat-facet hang trap entirely
 
 **0 NaN cells out of 360**, attack success 0.944 for both attacks, ~27.5 adversarials per fold.
 Compare RF/tree + HSJ on label noise, where **53 of 90 cells hung** and Thread B was abandoned
@@ -139,7 +187,7 @@ an MLP** — a question the project closed as a hang trap is reopened for this m
 | 4 | H4 — hang rate recorded | ✅ 0/360 |
 | 5 | H5 — baseline comparable to tree/SVM | ✅ 0.60 vs 0.44 / 0.49 |
 | 6 | H6 — outward clears 1.0 | ❌ **refuted**; F4 |
-| 7 | H7 — dose-response onset vs tree's k≥6 | ❌ no dose-response at all |
+| 7 | H7 — dose-response onset vs tree's k≥6 | ⚠️ **not as predicted, but not null** — no far-field response at any `k`; a monotonic *compression* response to near-field contamination at `k=2` (0.85×, DeepFool only); F5 |
 
 ## Next
 
@@ -147,7 +195,17 @@ an MLP** — a question the project closed as a hang trap is reopened for this m
    `.wiki/04-findings.md`, the report and the deck. F1 supplies the controlled evidence the
    imbalance finding was missing. *(Held pending your call — you asked to verify first.)*
 2. **Phase 1** — `tc ∈ {0,1,2}` asymmetry, and per-class recall curves for the protocol contrast.
-3. **Label noise on the MLP** — newly tractable per F6, and the one defect this thread has not
-   touched.
-4. **Do not** run the linear-SVM outward test (F4 makes it uninformative); consider a dedicated
-   `random`-direction grid instead (F5).
+3. **Label noise on the MLP** — newly tractable per F7, and the one defect this thread has not
+   touched. F5 makes this more interesting, not less: `k=2, toward` *is* spatially-localised label
+   noise, and it produced the thread's only clean dose-response. Random (unlocalised) label noise
+   is the natural contrast.
+4. **Resolve `k` in units of the class gap, not class σ.** F5 shows `k` conflates two defects:
+   below `k ≈ 3.7` it is contamination, above it is a true outlier. Reporting `k·s / centroid-gap`
+   alongside `k` would stop this being rediscovered.
+5. **Ceiling extension** (`--ceiling`, `n_out ∈ {20,30,40,60}` at `k=8`) — the honest scope limit
+   on F4: our maximum dose was 25% of the class, and Thread A found the tree's response plateaus
+   between 25–75% and collapses at 100%, while rbf-SVM was null at low dose but rose to 1.09× at
+   the ceiling *with accuracy degrading*. The MLP is the other global model, so its ceiling
+   behaviour is the direct test.
+6. **Do not** run the linear-SVM outward test (F4 makes it uninformative); consider a dedicated
+   `random`-direction grid instead (F6).

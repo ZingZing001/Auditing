@@ -128,12 +128,84 @@ def outlier():
     print('    which flags realistic-magnitude outliers as invisible to trees.')
 
 
+def ceiling():
+    """Dose pushed to and past the class-size ceiling (k=8). The train fold holds 40/class, so
+    n_out=40 doubles the class. Thread A (FINDINGS_outlier.md F3) found three distinct shapes:
+    tree+DTA rises then COLLAPSES at 100%; rbf-SVM is null at low dose but RISES at the ceiling
+    while test accuracy DEGRADES 0.97->0.89; RF stays flat null throughout."""
+    ol = DF.filter((pl.col('defect') == 'outlier') & (pl.col('k').is_in([0.0, 8.0])))
+    big = ol.filter(pl.col('n_out') >= 20)
+    if not len(big):
+        print('\n(no ceiling rows yet — run: python run_experiment.py --defect outlier --ceiling)')
+        return
+    inj = normalise(ol.filter(pl.col('n_out') > 0), ol.filter(pl.col('n_out') == 0))
+    doses = sorted(inj['n_out'].unique())
+    print('\n' + '=' * 78)
+    print('OUTLIER CEILING (k=8) — does dose rescue the null? n_out as % of the 40-pt class')
+    print('=' * 78)
+    for attack in sorted(inj['attack'].unique()):
+        print(f'\n  {attack}')
+        print(f"    {'direction':>9} " + ' '.join(f'{int(n)}({int(n)/40*100:.0f}%)'.rjust(11)
+                                                  for n in doses))
+        for d in ['toward', 'outward', 'random']:
+            cells, accs = [], []
+            for n in doses:
+                r = inj.filter((pl.col('attack') == attack) & (pl.col('direction') == d) &
+                               (pl.col('n_out') == n))
+                m, h = ci95(r['norm'].to_list()) if len(r) else (np.nan, np.nan)
+                a, _ = ci95(r['vacc'].to_list()) if len(r) else (np.nan, np.nan)
+                star = '*' if np.isfinite(h) and m - h > 1.0 else ''
+                cells.append(f'{m:.2f}{star}'.rjust(11)); accs.append(f'{a:.3f}'.rjust(11))
+            print(f'    {d:>9} ' + ' '.join(cells))
+            print(f"    {'  ^vacc':>9} " + ' '.join(accs))
+    print('\n    (* = 95% CI clears 1.0.)  Watch for the SVM signature: spread rising at the')
+    print('    ceiling TOGETHER WITH accuracy degrading — that is contamination, not an outlier.')
+
+
+def dose_at_fixed_distance():
+    """F5 follow-up: hold the DISTANCE fixed, sweep the COUNT. The MLP's response is near-field
+    and runs DOWNWARD (compression), so this is read as `is 1.0 ABOVE the CI`, not below it."""
+    ol = DF.filter(pl.col('defect') == 'outlier')
+    inj = normalise(ol.filter(pl.col('n_out') > 0), ol.filter(pl.col('n_out') == 0))
+    ks = [k for k in (2.0, 4.0) if len(inj.filter((pl.col('k') == k) & (pl.col('n_out') > 10)))]
+    if not ks:
+        print('\n(no fixed-distance dose rows yet — run: '
+              'python run_experiment.py --defect outlier --dose)')
+        return
+    print('\n' + '=' * 78)
+    print('FIXED DISTANCE, RISING COUNT — does the F5 compression deepen with dose?')
+    print('=' * 78)
+    for k in ks:
+        gap_pct = {2.0: 55, 4.0: 109}.get(k, 0)
+        print(f'\n  k={k:.0f}  ({gap_pct}% of the virginica->versicolor centroid gap)')
+        for attack in sorted(inj['attack'].unique()):
+            for d in ['toward', 'outward']:
+                sub = inj.filter((pl.col('attack') == attack) & (pl.col('direction') == d) &
+                                 (pl.col('k') == k))
+                ns = sorted(sub['n_out'].unique())
+                if not ns:
+                    continue
+                cells = []
+                for n in ns:
+                    m, h = ci95(sub.filter(pl.col('n_out') == n)['norm'].to_list())
+                    mark = 'v' if np.isfinite(h) and m + h < 1.0 else (
+                        '^' if np.isfinite(h) and m - h > 1.0 else ' ')
+                    cells.append(f'{int(n)}:{m:.2f}{mark}')
+                print(f'    {attack:>8} {d:>8}  ' + ' '.join(c.rjust(9) for c in cells))
+    print('\n    (v = CI entirely BELOW 1.0 = compression; ^ = entirely above.)')
+    print('    `outward` at matched count is the control: if it stays null while `toward`')
+    print('    compresses, the effect is about points landing in the contested overlap,')
+    print('    not about simply adding training points.')
+
+
 def main():
     print(f'rows={len(DF)}  cells={len(DF) // 2}  '
           f"nan_spread={int(DF['mean_dist'].is_nan().sum() + DF['mean_dist'].is_null().sum())}")
     print(f"attacks={sorted(DF['attack'].unique())}  defects={sorted(DF['defect'].unique())}")
     coverage_gap()
     outlier()
+    ceiling()
+    dose_at_fixed_distance()
     print('\n' + '=' * 78)
     print('H4 (hang/convergence): asucc and nadv below — an MLP should not show the')
     print('flat-facet non-convergence that made RF/tree label noise intractable.')
