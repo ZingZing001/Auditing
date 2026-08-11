@@ -5,8 +5,10 @@ Every fold fits **one** model attacked by **both** HopSkipJump (black-box) and D
 (white-box), so the attack contrast shares identical weights. Spread is inverse-transformed to
 raw iris units and normalised **per seed** to that seed's clean baseline (1.0 = no effect).
 
-Data: `results.parquet` (720 rows / 360 cells, **0 NaN**). Runner: `run_experiment.py`.
-Analysis: `python analyze.py`. Contract: `PLAN.md`.
+Data: `results.parquet` (1440 rows / 720 cells, **0 NaN**) — the base grid plus the `--ceiling`
+(dose to 150% of class size at `k=8`) and `--dose` (count sweep at fixed `k=2`, `k=4`, with a
+matched-count `outward` control) extensions. Runner: `run_experiment.py`.
+Analysis: `python analyze.py` · figures: `analysis.ipynb`. Contract: `PLAN.md`.
 
 Clean baseline: `vacc` 0.957, spread 0.600 (HSJ) / 0.622 (DeepFool), perturbation ~1.36.
 **H5 ✅** — same order as tree (~0.44) and SVM (~0.49), so the standardise-then-invert pipeline
@@ -71,46 +73,48 @@ running out of attackable test points**, and it is attack-specific (HSJ's stocha
 DeepFool's deterministic gradient step — DeepFool/`before_split` moves 1.27× → 1.24×, within CI).
 Confirmed on a model family that shares no structure with the decision tree.
 
-## F4 — H6 REFUTED: the MLP does *not* see outward outliers, so locality is not the explanation
+## F4 — H6: `outward` is refuted robustly; `toward` fires, but only at ~5× the tree's dose
 
 Pre-registered prediction: a global boundary should be dragged by a far same-labeled point, so
-`outward` should fire where every local model is null. It does not.
+`outward` should fire where every local model is null.
 
-Strong cell (`k=8, n_out=10`), normalised, 95% CI:
+**`outward` does not fire — at any distance, at any dose, under either attack.** Now tested to
+`n_out=60`, i.e. **150% of the target class**, at `k=8` (3.53 cm, genuine far field):
 
-| model (attack) | toward | outward |
-|---|---|---|
-| tree d3 (DTA, white-box) | **1.36×** | 1.01× null |
-| tree d10 (DTA, white-box) | **1.25×** | 1.00× null |
-| rbf-SVM (HSJ) | 0.98× null | 1.05× null |
-| RandomForest (HSJ) | 0.92× null | 1.04× null |
-| **MLP (HSJ)** | **1.01× [0.91,1.11] null** | **1.01× [0.92,1.10] null** |
-| **MLP (DeepFool, white-box)** | **1.01× [0.91,1.11] null** | **0.97× [0.90,1.03] null** |
+| dose (% of class) | 12% | 25% | 50% | 75% | 100% | 150% |
+|---|---|---|---|---|---|---|
+| DeepFool `outward` | 1.00 | 0.97 | 1.03 | 0.92 | 0.95 | 1.02 |
 
-Two conclusions, both cleaner than the hypothesis they replace:
+**The locality explanation is therefore wrong.**
+[`outlier_experiment/FINDINGS_phase05.md`](../outlier_experiment/FINDINGS_phase05.md) F4 attributes
+the rbf-SVM `outward` null to the Gaussian kernel's influence decaying to ~0 before reaching the
+probed boundary, and names a global-boundary model as the clean test. The MLP is that test, it is
+null under a white-box gradient attack, and it stays null when the "outliers" outnumber the class
+itself. The `outward` null is **general**, not a kernel artifact. The proposed linear-SVM
+follow-up is not worth running.
 
-1. **The locality explanation is wrong, or at least insufficient.**
-   [`outlier_experiment/FINDINGS_phase05.md`](../outlier_experiment/FINDINGS_phase05.md) F4
-   attributes the rbf-SVM `outward` null to the Gaussian kernel's influence decaying to ~0 before
-   reaching the probed boundary, and names a global-boundary model as the clean test. The MLP is
-   that test, and it is null too — **including under a white-box gradient attack**. The
-   `outward` null is *general*, not a kernel-locality artifact. The proposed linear-SVM follow-up
-   is unlikely to be worth running.
-2. **The outlier signal looks specific to axis-aligned partition models under white-box attack.**
-   The MLP shows no `toward` response either (1.01×), where trees show 1.25–1.36×. Combined with
-   RF's null, the tree result now looks like a property of *how a tree carves space* — a lone far
-   point forces a dedicated axis-aligned tendril that the minimal-perturbation attack walks into —
-   rather than a general property of adversarial geometry.
+### ⚠️ Correction — `toward` DOES fire on the MLP; this document's first draft got it wrong
 
-The H6 refutation is unaffected by F5 below: `outward` is null at *every* distance, and `toward`
-at `k=8` — genuine far-field, 3.53 cm from the centroid — is null too.
+An earlier version of F4 concluded that "the outlier signal is specific to axis-aligned partition
+models under white-box attack", because MLP `toward` is null at the strong cell. **That cell is
+`n_out=10` — 25% of the class — which is simply too small a dose for this model.** At ≥50% dose
+DeepFool `toward` reaches a stable **~1.10×** with CIs clearing 1.0, while test accuracy holds at
+0.945–0.951 against a clean 0.957. The MLP needs roughly **5× the dose a tree needs** (the tree
+responds from `n_out≈1` and saturates by ~5); it is not blind to outliers.
 
-**Correction (H7).** An earlier draft of this document recorded H7 as "no dose-response at all,
-flat in `k` for both attacks and both directions". That was wrong. It scanned only for spread
-*above* 1.0 and filed everything else as null, discarding a clean monotonic trend running in the
-**compression** direction. See F5.
+Generalising from one cell was the error — the exact dose limitation flagged when F4 was written.
+**`outward` is unaffected and the locality refutation stands.** HSJ remains null at every dose,
+so Thread A's white-box dependence holds here too.
 
-## F5 — The MLP detects near-field CONTAMINATION by compressing, not far-field outliers (H7 ↺)
+Full account, including the fourth ceiling shape and its caveats:
+[`FINDINGS_dose.md`](FINDINGS_dose.md) **D1**.
+
+**Correction (H7).** An earlier draft also recorded H7 as "no dose-response at all, flat in `k`
+for both attacks and both directions". Also wrong: it scanned only for spread *above* 1.0 and
+filed everything else as null, discarding a clean trend running in the **compression** direction.
+See F5 and [`FINDINGS_dose.md`](FINDINGS_dose.md) D2.
+
+## F5 — Near-field CONTAMINATION produces the opposite sign: compression, not expansion (H7 ↺)
 
 At small `k` the `toward` injection does not produce an outlier at all. Measured geometry:
 
@@ -129,9 +133,14 @@ not an anomaly. DeepFool responds, and responds *downward*:
 | **DeepFool** (`n_out=10`) | **0.85× [0.79, 0.91]** | 0.96× [0.90, 1.01] | 1.01× [0.91, 1.11] |
 | HSJ (`n_out=10`) | 1.02× [0.96, 1.09] | 1.02× [0.90, 1.14] | 1.01× [0.91, 1.11] |
 
-Monotonic in `k`, and dose-dependent at fixed `k=2`: `n_out=5` → 0.90× [0.80, 1.01],
-`n_out=10` → **0.85×**. `nclust` (~3.8) and `clust_size` (~5.7) barely move, so these are
-genuinely tighter clusters, not a clustering artifact.
+Monotonic in `k`. `nclust` (~3.8) and `clust_size` (~5.7) barely move, so these are genuinely
+tighter clusters, not a clustering artifact.
+
+**A matched-count `outward` control confirms this is about *where* the points land, not *how
+many*** — `toward` sits at 0.85–0.91 across the dose sweep while `outward` at the identical count
+is flat at ~1.02. The compression is also a **threshold, not a dial**: it trips at `n_out=3` and
+then saturates rather than deepening. Full dose sweep and the accuracy-blindness check:
+[`FINDINGS_dose.md`](FINDINGS_dose.md) **D2**, **D3**.
 
 **Mechanism.** Contamination drags the boundary into the dense contested band and anchors it
 there. DeepFool walks each test point to its *nearest* boundary, so every adversarial point piles
@@ -152,24 +161,43 @@ mapping" after observing accuracy dip at extreme `toward` injection. The frontie
 near **`k ≈ 3.7`** (where `k·s` equals the centroid gap).
 
 **Consequence for the F5 question in Thread A** — whether a more sensitive model detects
-*realistic* 2–3σ outliers: still **no**. A realistic outlier is far-field and same-labelled; the
-MLP is null there. What it detects at `k=2` is a different defect wearing the outlier's clothes.
+*realistic* 2–3σ outliers: **still no**. At `k=2–3` the injected point is not a realistic outlier,
+it is contamination in a neighbouring class, and what fires there is a different defect wearing
+the outlier's clothes. The MLP's genuine far-field outlier response (F4) needs `k=8` *and* ≥50%
+dose — far outside anything a real dataset would contain.
 
-## F6 — Tentative: `random` direction is the only far-field outlier cell that moves
+**But the contamination defect it *does* detect is the more valuable finding.** Per
+[`FINDINGS_dose.md`](FINDINGS_dose.md) D3, `k=2, toward` stays invisible to accuracy at every dose
+tested (minority recall 0.942 → 0.942 at 150% dose) while producing a stable, control-validated
+geometric signal. That is the project's central claim in its strongest form — and unlike the
+coverage gap, whose accuracy-blindness F1 showed to be a test-set artifact, this one survives a
+clean test set.
 
-DeepFool `random` at the strong cell is **1.15× [1.04,1.27]** while HSJ `random` is 1.01× (null).
-This echoes the one non-null RF cell in Thread B (`random` **1.13× [1.02,1.24]`,
-[`FINDINGS_outlier.md`](../model_family_experiment/FINDINGS_outlier.md) F2) — two different models
-showing a weak effect in the same direction.
+**The sign is the diagnostic.** Taken with F4, the MLP separates two defects by the *direction*
+of the geometric change: contamination in the overlap → **compression** (0.85×); far-field
+same-labelled outliers at high dose → **expansion** (1.10×). Both are white-box-only and both are
+accuracy-blind-ish, so a scalar magnitude alone would conflate them; the sign does not.
 
-**Treat as a lead, not a result.** It is a single cell among six direction × attack combinations
-with no dose-response behind it, so it is exactly the shape of a multiple-comparisons artifact.
-Thread A's own lesson (an n=3 conclusion that flipped at n=10) argues for a dedicated
-`random`-only grid before anything is claimed.
+## F6 — `random` direction fires at low-to-mid dose, and now has a dose curve
+
+| `k=8`, DeepFool `random` | 12% | 25% | 50% | 75% | 100% | 150% |
+|---|---|---|---|---|---|---|
+| normalised spread | **1.10** ✅ | **1.15** ✅ | **1.12** ✅ | 1.07 | 1.05 | 1.07 |
+
+Three consecutive doses clear 1.0, then it decays as dose rises — the opposite shape to `toward`,
+which switches on at 50% and holds. HSJ is null throughout. This echoes the one non-null RF cell
+in Thread B (`random` 1.13× [1.02,1.24],
+[`FINDINGS_outlier.md`](../model_family_experiment/FINDINGS_outlier.md) F2), so two different
+models now show it.
+
+**Upgraded from "lead" to "weak but replicated result"** — it survives a dose sweep rather than
+sitting in one cell, which was the multiple-comparisons worry. Still the weakest effect here, and
+the decay at high dose is unexplained: scattering `n` points isotropically probably stops looking
+like anomalies and starts looking like added variance once `n` approaches the class size.
 
 ## F7 — H4 ✅: the MLP escapes the flat-facet hang trap entirely
 
-**0 NaN cells out of 360**, attack success 0.944 for both attacks, ~27.5 adversarials per fold.
+**0 NaN cells out of 720**, attack success 0.944 for both attacks, ~27.9 adversarials per fold.
 Compare RF/tree + HSJ on label noise, where **53 of 90 cells hung** and Thread B was abandoned
 ([`FINDINGS_label_noise.md`](../model_family_experiment/FINDINGS_label_noise.md)). A smooth
 boundary gives HSJ a well-conditioned direction estimate, so **label noise via HSJ is tractable on
@@ -184,10 +212,10 @@ an MLP** — a question the project closed as a hang trap is reopened for this m
 | 1 | H1 — CG spread separates low vs high bias | ✅ both attacks, both protocols |
 | 2 | H2 — protocol isolates the accuracy effect | ✅ decisively; F1 |
 | 3 | H3 — DeepFool vs HSJ verdict stated | ✅ DeepFool cleaner on `before_split` (d +1.40 vs +0.24); **HSJ far stronger on `train_only` (d +2.81 vs +1.00)** — no consistent white-box advantage for a *global* defect, unlike the outlier case |
-| 4 | H4 — hang rate recorded | ✅ 0/360 |
+| 4 | H4 — hang rate recorded | ✅ 0/720 |
 | 5 | H5 — baseline comparable to tree/SVM | ✅ 0.60 vs 0.44 / 0.49 |
-| 6 | H6 — outward clears 1.0 | ❌ **refuted**; F4 |
-| 7 | H7 — dose-response onset vs tree's k≥6 | ⚠️ **not as predicted, but not null** — no far-field response at any `k`; a monotonic *compression* response to near-field contamination at `k=2` (0.85×, DeepFool only); F5 |
+| 6 | H6 — outward clears 1.0 | ❌ **refuted, robustly** — null at every distance and every dose out to 150% of the class; F4 |
+| 7 | H7 — dose-response onset vs tree's k≥6 | ⚠️ **two responses, neither as predicted** — far-field `toward` needs `k=8` **and ≥50% dose** (1.10×, accuracy-blind, DeepFool only); near-field contamination compresses to 0.85× with a matched-count `outward` control; F4, F5 |
 
 ## Next
 
@@ -202,10 +230,13 @@ an MLP** — a question the project closed as a hang trap is reopened for this m
 4. **Resolve `k` in units of the class gap, not class σ.** F5 shows `k` conflates two defects:
    below `k ≈ 3.7` it is contamination, above it is a true outlier. Reporting `k·s / centroid-gap`
    alongside `k` would stop this being rediscovered.
-5. **Ceiling extension** (`--ceiling`, `n_out ∈ {20,30,40,60}` at `k=8`) — the honest scope limit
-   on F4: our maximum dose was 25% of the class, and Thread A found the tree's response plateaus
-   between 25–75% and collapses at 100%, while rbf-SVM was null at low dose but rose to 1.09× at
-   the ceiling *with accuracy degrading*. The MLP is the other global model, so its ceiling
-   behaviour is the direct test.
-6. **Do not** run the linear-SVM outward test (F4 makes it uninformative); consider a dedicated
-   `random`-direction grid instead (F6).
+5. **Re-check the tree and RF at ≥50% dose on `toward`.** This is the generalisable lesson from
+   the F4 correction: MLP `toward` reads null at 25% and fires at 50%+. RandomForest was recorded
+   as "flat null throughout" — but if its ceiling grid was concentrated at low dose, it may have
+   the same blind spot this document did. Cheap to verify and it would change a published claim.
+6. **Report the sign, not just the magnitude.** F4 and F5 give opposite-signed responses to two
+   different defects on the same model and attack. A scalar "spread went up by X" conflates them;
+   `>1` vs `<1` separates them. This is the closest thing this thread has to a positive
+   methodological contribution.
+7. **Do not** run the linear-SVM outward test — F4 makes it uninformative now that `outward` is
+   null out to 150% dose on a global model.

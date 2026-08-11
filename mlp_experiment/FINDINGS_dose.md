@@ -118,6 +118,7 @@ matters; not worth a sentence in a report yet.
 
 1. **`FINDINGS_phase0.md` F4/H6 needs the dose qualification** — "the MLP is null for outliers" is
    only true at `n_out ≤ 10`. The `outward` locality refutation is unaffected.
+   *(Applied 2026-08-12: F4 now carries the correction and points here.)*
 2. **The MLP has two distinct outlier responses, in opposite directions**: far-field dispersion
    (`k=8`, dose ≥ 50%, ~1.10×) and near-field compression (`k=2`, dose ≥ 3, ~0.86×). A scalar
    spread metric with a one-sided "is it above 1.0" test detects the first and **actively hides
@@ -131,4 +132,5 @@ matters; not worth a sentence in a report yet.
   says it sits near `k=3.67`, where the injection crosses the versicolor centroid).
 - Record **per-class recall for all three classes**, not just `tc` — D3 can only infer the
   versicolor dent from overall accuracy.
-- Dedicated `random`-direction grid (Phase 0 F5 lead, still unresolved).
+- Dedicated `random`-direction grid (Phase 0 **F6** — renumbered when the contamination finding
+  was inserted as F5; it now has a dose curve, firing at 12–50% and decaying above that).
