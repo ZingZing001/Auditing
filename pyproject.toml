@@ -12,5 +12,6 @@ dependencies = [
     "pandas>=2.3.3",
     "polars>=1.36.1",
     "scikit-learn>=1.8.0",
+    "torch>=2.13.0",
     "xgboost>=3.4.0",
 ]
