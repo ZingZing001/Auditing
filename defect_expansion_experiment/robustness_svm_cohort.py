@@ -24,8 +24,8 @@ from sklearn.svm import SVC
 from sklearn.model_selection import StratifiedKFold
 
 HERE = Path(__file__).resolve().parent
-SEEDS = [42, 58, 125, 7, 13, 21, 99, 123, 200, 777]
-FRACS = [0.0, 0.5, 0.85, 0.95]
+SEEDS = [42, 58, 125, 7, 13, 21, 99, 123, 200, 777] + (list(range(300, 320)) if os.environ.get('SEEDS30') else [])
+FRACS = [0.0] + [float(f) for f in os.environ.get('FRACS', '0.5,0.85,0.95').split(',')]   # env FRACS overrides severities
 TC, FEAT, N_FOLDS = 2, 2, 5
 KEYS = [('random', f) for f in FRACS] + [('spatial', f) for f in FRACS[1:]]
 
@@ -87,9 +87,9 @@ if __name__ == '__main__':
     t0 = time.time()
     with ProcessPoolExecutor(max_workers=min(len(SEEDS), os.cpu_count() or 4)) as ex:
         rows = list(ex.map(run_seed, SEEDS))
-    df = pl.DataFrame(rows); df.write_csv(HERE / 'robustness_svm_cohort.csv')
+    df = pl.DataFrame(rows); df.write_csv(HERE / ('robustness_svm_cohort' + os.environ.get('OUT_SUFFIX', '') + '.csv'))
     ci = lambda a: 1.96 * np.nanstd(a, ddof=1) / np.sqrt(np.sum(~np.isnan(a)))
-    print(f'SVM + HopSkipJump, iris virginica / petal length, 10 seeds, {(time.time()-t0)/60:.1f} min; '
+    print(f'SVM + HopSkipJump, iris virginica / petal length, {len(SEEDS)} seeds, {(time.time()-t0)/60:.1f} min; '
           f'mean shared cohort {df["n_cohort"].mean():.1f} of 30')
     for mode in ('std', 'fixed'):
         base = df[f'{mode}_random_0.0'].to_numpy()

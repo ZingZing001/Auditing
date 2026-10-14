@@ -81,7 +81,7 @@ def cell_std(ds, structure, frac, seed):
 
 
 # ------------------------------------------------------------------ check 2: fixed cohort
-FRACS = [0.0, 0.5, 0.85, 0.95]
+FRACS = [0.0] + [float(f) for f in os.environ.get('FRACS', '0.5,0.85,0.95').split(',')]   # env FRACS overrides severities
 
 def cell_cohort(structure, seed, tc=2, feat=2):
     X, y = load_iris(return_X_y=True)
@@ -164,7 +164,7 @@ if __name__ == '__main__':
         ra = s2.filter((pl.col('structure') == 'random') & (pl.col('frac') == f))['spread_fixed']
         print(f'fixed cohort, frac {f}: d(spatial vs random) {cohens_d(sp, ra):+.2f}')
 
-    s3 = pl.DataFrame([cell_joint(sd) for sd in SEEDS]); s3.write_csv(HERE / 'robustness_joint_cohort.csv')
+    s3 = pl.DataFrame([cell_joint(sd) for sd in SEEDS]); s3.write_csv(HERE / ('robustness_joint_cohort' + os.environ.get('OUT_SUFFIX', '') + '.csv'))
     print(f'\nCHECK 3  one cohort shared by both arms (mean cohort {s3["n_cohort"].mean():.1f} of 30 test points)')
     base = s3['random_0.0'].to_numpy()
     for f in FRACS[1:]:
