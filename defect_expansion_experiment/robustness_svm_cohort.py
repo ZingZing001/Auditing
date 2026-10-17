@@ -6,7 +6,10 @@ Per fold every (structure, frac) model is trained first. Two scores per model:
   standard  attack the test points THAT model classifies correctly (the published pipeline)
   fixed     attack only the test points ALL models classify correctly (one cohort shared by
             both arms and all severities)
-HSJ is seeded per (seed, fold, model) so the run is reproducible. Seeds run in parallel.
+NOT reproducible run to run: ART's HopSkipJump draws its starting points from an unseeded
+np.random.RandomState() (art/attacks/evasion/hop_skip_jump.py, line 295), so the np.random.seed
+call below does not reach it. Standard-pipeline SVM differences vary between runs (e.g. +0.080 vs
+-0.013 at 50%); the fixed-cohort differences stayed near zero in both. Seeds run in parallel.
 
 Usage (from repo root):  uv run python defect_expansion_experiment/robustness_svm_cohort.py
 Writes robustness_svm_cohort.csv next to this script.
@@ -49,7 +52,7 @@ def run_seed(seed):
     def spread(art, Xa, ya, tag):
         if len(Xa) == 0:
             return np.nan, 0
-        np.random.seed(tag)
+        np.random.seed(tag)   # seeds numpy's global RNG only; HSJ's own RandomState stays unseeded
         adv = HopSkipJump(classifier=art, norm=2, max_iter=10, max_eval=200, init_eval=50,
                           verbose=False).generate(Xa)
         adv = adv[np.argmax(art.predict(adv), axis=1) != ya]
