@@ -25,6 +25,7 @@ HERE = Path(__file__).resolve().parent
 SEEDS = [42, 58, 125, 7, 13, 21, 99, 123, 200, 777] + list(range(300, 320))
 CORR = [0.0, 1.0, 2.0, 4.0, 8.0]
 N_FOLDS = 5
+FULLSTD = bool(os.environ.get('FULLSTD'))   # env FULLSTD=1: also standardise the shortcut feature on the training fold
 
 
 def run_job(job):
@@ -50,6 +51,8 @@ def run_job(job):
             sc = StandardScaler().fit(X[tr])
             Xt = np.column_stack([sc.transform(X[tr]), corr * z[tr] + rng.normal(0, 1, len(tr))])
             Xv = np.column_stack([sc.transform(X[te]), rng.normal(0, 1, len(te))])
+            if FULLSTD:                                   # standardise the augmented features too (train fold)
+                sc2 = StandardScaler().fit(Xt); Xt, Xv = sc2.transform(Xt), sc2.transform(Xv)
             yt, yv = y[tr], y[te]
             if model == 'tree':
                 art = SklearnClassifier(DecisionTreeClassifier(max_depth=None, random_state=42).fit(Xt, yt))
@@ -82,7 +85,7 @@ if __name__ == '__main__':
     with ProcessPoolExecutor(max_workers=os.cpu_count() or 4) as ex:
         for out in ex.map(run_job, jobs):
             rows.extend(out)
-    df = pl.DataFrame(rows); df.write_csv(HERE / 'shortcut_attack_all.csv')
+    df = pl.DataFrame(rows); df.write_csv(HERE / ('shortcut_attack_all' + ('_fullstd' if FULLSTD else '') + '.csv'))
     ci = lambda a: 1.96 * np.nanstd(a, ddof=1) / np.sqrt(np.sum(~np.isnan(a)))
     for model in ['tree', 'svm']:
         for ds in ['iris', 'wine']:
