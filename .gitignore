@@ -33,3 +33,4 @@ extend.log
 **/progress.txt
 **/run_*.log
 **/run_*.err
+.work/
