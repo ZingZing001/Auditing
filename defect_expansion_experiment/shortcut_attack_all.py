@@ -5,7 +5,8 @@ pure N(0,1) at test time (iris: 5 inputs, wine: 14). Differences from run_shortc
   * every test point is attacked (flips counted against the model's current prediction), so the
     attacked set does not shrink as accuracy collapses;
   * the real features are standardised on each training fold only.
-Records spur_frac (mean share of adversarial L2 displacement on the shortcut axis), scalar spread
+Records retention per cell (attempted, flipped, clustered, valid folds for direction and for spread)
+and spur_frac (mean share of adversarial L2 displacement on the shortcut axis), scalar spread
 (OPTICS mean pairwise distance) and test accuracy. Tree + white-box DTA (30 seeds) and RBF-SVM +
 HopSkipJump (15 seeds; HSJ is not reproducible run to run, see attack_all_points.py).
 
@@ -46,7 +47,7 @@ def run_job(job):
     skf = StratifiedKFold(n_splits=N_FOLDS, shuffle=True, random_state=seed)
     rows = []
     for corr in CORR:
-        rng = np.random.default_rng(seed); acc = dict(spur_frac=[], spread=[], vacc=[], nflip=[])
+        rng = np.random.default_rng(seed); acc = dict(spur_frac=[], spread=[], vacc=[], nflip=[], nclus=[])
         for tr, te in skf.split(X, y):
             sc = StandardScaler().fit(X[tr])
             Xt = np.column_stack([sc.transform(X[tr]), corr * z[tr] + rng.normal(0, 1, len(tr))])
@@ -68,12 +69,16 @@ def run_job(job):
             if len(adv):
                 dx = adv - x0; l2 = np.linalg.norm(dx, axis=1); nz = l2 > 1e-12
                 acc['spur_frac'].append(float(np.mean((dx[nz, spur] ** 2) / (l2[nz] ** 2))) if nz.any() else np.nan)
-                acc['spread'].append(imb.cluster_stats(adv)[2])
+                cs = imb.cluster_stats(adv); acc['spread'].append(cs[2])
+                acc['nclus'].append(0 if (np.isnan(cs[1]) or cs[1] == 0) else int(round(cs[1] * cs[3])))
             else:
-                acc['spur_frac'].append(np.nan); acc['spread'].append(np.nan)
+                acc['spur_frac'].append(np.nan); acc['spread'].append(np.nan); acc['nclus'].append(0)
             acc['vacc'].append(float((pv == yv).mean())); acc['nflip'].append(int(flip.sum()))
-        rows.append(dict(dataset=dataset, model=model, seed=seed, corr=corr,
-                         **{k: float(np.nanmean(v)) for k, v in acc.items()}))
+        rows.append(dict(dataset=dataset, model=model, seed=seed, corr=corr, attempted=float(len(te)),
+                         valid_folds_dir=int(np.sum(~np.isnan(acc['spur_frac']))),
+                         valid_folds_spread=int(np.sum(~np.isnan(acc['spread']))),
+                         **{k: (float(np.nanmean(v)) if np.any(~np.isnan(np.asarray(v, float))) else np.nan)
+                            for k, v in acc.items()}))
     return rows
 
 
@@ -96,5 +101,7 @@ if __name__ == '__main__':
                 r = q.filter(pl.col('corr') == c).sort('seed')
                 sf = r['spur_frac'].to_numpy(); sp = r['spread'].to_numpy() / b
                 print(f'  corr {c:>3.0f}  shortcut share {np.nanmean(sf):.3f} ±{ci(sf):.3f}   spread {np.nanmean(sp):.3f}x ±{ci(sp):.3f}'
-                      f'   acc {r["vacc"].mean():.3f}   flipped/fold {r["nflip"].mean():.1f}')
+                      f'   acc {r["vacc"].mean():.3f}   flipped/fold {r["nflip"].mean():.1f}   clustered/fold {r["nclus"].mean():.1f}'
+                      f'   valid seeds dir/spread {int(np.sum(~np.isnan(sf)))}/{int(np.sum(~np.isnan(sp)))}'
+                      f'   valid folds dir/spread {r["valid_folds_dir"].sum()}/{r["valid_folds_spread"].sum()} of {5*len(r)}')
     print(f'\nDONE in {(time.time()-t0)/60:.1f} min')

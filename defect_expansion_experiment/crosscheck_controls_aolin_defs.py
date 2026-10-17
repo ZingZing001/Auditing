@@ -73,7 +73,8 @@ def run_cell(kind, frac, structure, seed):
             SKIPPED[0] += int((~keep).sum())
             adv = adv[keep & (np.argmax(art.predict(adv), axis=1) != pv[c])]   # flip = change of current prediction
             md.append(imb.cluster_stats(adv)[2] if len(adv) else np.nan)
-    return dict(kind=kind, frac=frac, structure=structure, seed=seed, mean_dist=float(np.nanmean(md)))
+    return dict(kind=kind, frac=frac, structure=structure, seed=seed, mean_dist=float(np.nanmean(md)),
+                skipped_total_so_far=SKIPPED[0])
 
 
 def d(a, b):
@@ -95,4 +96,5 @@ if __name__ == '__main__':
             ra = df.filter((pl.col('kind') == k) & (pl.col('frac') == f) & (pl.col('structure') == 'random'))['mean_dist']
             print(f'{k:<10}{f:>6.2f}  {d(sp, b):14.2f} {d(sp, ra):12.2f}')
     print(f'points skipped by DTA IndexError: {SKIPPED[0]}')
+    (HERE / ('crosscheck_controls_aolin_defs' + ('_attack_all' if ATTACK_ALL else '') + '_skipped.txt')).write_text(f'{SKIPPED[0]}\n')
     print(f'DONE in {(time.time()-t0)/60:.1f} min')
