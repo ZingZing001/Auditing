@@ -12,7 +12,7 @@ Settings (target class, deletion feature):
   iris_pl   iris, virginica (2), petal length (f2)
   wine      wine, class 0, proline (f12)
 Models: overfit tree + white-box DecisionTreeAttack; RBF-SVM + HopSkipJump
-  (norm=2, max_iter=10, max_eval=200, init_eval=50). Features standardised on each training fold.
+  (norm=2, max_iter=10, max_eval=200, init_eval=50). Features standardised on each training fold (SCALE=full fits on all data, as a diagnostic only).
 Train-only deletion via run_imbalance.inject_delete, matched count; spread via cluster_stats.
 HopSkipJump is NOT reproducible run to run (ART seeds its initialisation from an unseeded
 RandomState), so SVM numbers vary at the level of their confidence intervals.
@@ -36,6 +36,7 @@ FRACS = [0.0, 0.2, 0.4, 0.6, 0.8, 0.9]
 SETTINGS = {'iris_pw': ('iris', 2, 3), 'iris_pl': ('iris', 2, 2), 'wine': ('wine', 0, 12)}
 MODELS = ['tree', 'svm']
 N_FOLDS = 5
+SCALE = os.environ.get('SCALE', 'fold')   # 'fold' (default, correct) or 'full' (diagnostic: scaler fitted on all data)
 
 
 def _imb():
@@ -62,7 +63,7 @@ def run_job(job):
     keys = [('random', f) for f in FRACS] + [('spatial', f) for f in FRACS[1:]]
     acc = {k: dict(spread=[], recall=[], flipped=[], vacc=[]) for k in keys}
     for tr, te in skf.split(X, y):
-        sc = StandardScaler().fit(X[tr])
+        sc = StandardScaler().fit(X[tr] if SCALE == 'fold' else X)
         Xt0, Xv, yt0, yv = sc.transform(X[tr]), sc.transform(X[te]), y[tr], y[te]
         for st, f in keys:
             Xt, yt = imb.inject_delete(Xt0, yt0, tc, feat, f, st, rng)
@@ -110,6 +111,6 @@ if __name__ == '__main__':
             rows.extend(out)
             if i % 30 == 0:
                 print(f'  [{i}/{len(jobs)}] {(time.time()-t0)/60:.1f} min', flush=True)
-    df = pl.DataFrame(rows); df.write_csv(HERE / 'attack_all_points.csv')
+    df = pl.DataFrame(rows); df.write_csv(HERE / ('attack_all_points.csv' if SCALE == 'fold' else 'attack_all_points_fullscale.csv'))
     summarise(df)
     print(f'\nDONE in {(time.time()-t0)/60:.1f} min')
