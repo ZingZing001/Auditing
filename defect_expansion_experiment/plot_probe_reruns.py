@@ -100,3 +100,31 @@ for setting in ['iris', 'iris_plen', 'wine']:
         d = g - r; mk = '*' if np.nanmean(d) - ci(d) > 0 else ('r' if np.nanmean(d) + ci(d) < 0 else ' ')
         out.append(f'{int(f * 100)}% {100 * np.nanmean(d) / np.nanmean(r):+.0f}{mk}')
     print(f'SVM every point, {setting}: ' + '  '.join(out))
+
+# ---- every value quoted in the report from these reruns
+print('\nLabel noise (tab:noise): spread / no-noise run, every point / correct only; accuracy at 40% / 80%')
+for model in ['tree', 'svm']:
+    for ds in ['iris', 'wine']:
+        q = ln.filter((pl.col('model') == model) & (pl.col('dataset') == ds))
+        cells = [f'{np.nanmean(a):.2f} / {np.nanmean(c):.2f}' for a, c in
+                 zip(paired(q, 'noise', [0.2, 0.4, 0.6, 0.8], 'mean_dist'), paired(q, 'noise', [0.2, 0.4, 0.6, 0.8], 'mean_dist_correct'))]
+        acc = [q.filter(pl.col('noise') == v)['vacc'].mean() for v in (0.4, 0.8)]
+        rng_all = [np.nanmean(v) for v in paired(q, 'noise', nv[1:], 'mean_dist')]
+        print(f'  {model} {ds}: ' + ' | '.join(cells) + f' | acc {acc[0]:.2f} / {acc[1]:.2f}'
+              f'   every-point range {min(rng_all):.2f}-{max(rng_all):.2f}, correct-only at 90% '
+              f'{np.nanmean(paired(q, "noise", [0.9], "mean_dist_correct")[0]):.2f}')
+print('\nLeakage: paired margin ratio leaked / clean [95% interval], and global spread / no-leak run')
+for ds in ['iris', 'wine']:
+    q = lk.filter(pl.col('dataset') == ds)
+    for v in lv[1:]:
+        r = q.filter(pl.col('n_leak') == v).sort('seed'); out = []
+        for suf in ('', '_correct'):
+            x = (r['margin_leak' + suf] / r['margin_clean' + suf]).to_numpy(); d = (r['margin_leak' + suf] - r['margin_clean' + suf]).to_numpy()
+            out.append(f'{suf or "every":8s} {np.nanmean(x):.3f} [{np.nanmean(x) - ci(x):.3f}, {np.nanmean(x) + ci(x):.3f}] diff {np.nanmean(d):+.3f}±{ci(d):.3f}')
+        sp = paired(q, 'n_leak', [v], 'spread_m0')[0]
+        print(f'  {ds} n={v:2d}: ' + ' | '.join(out) + f' | global spread {np.nanmean(sp):.3f}')
+print('\nOutliers: spread / matched no-outlier baseline, every point / correct only')
+for model in ['tree_d3', 'tree_d10']:
+    q = pl.concat([kb.filter(pl.col('model') == model), kp.filter(pl.col('model') == model)])
+    print(f'  {model}: ' + '  '.join(f'k{k:g} {np.nanmean(a):.2f}/{np.nanmean(c):.2f}' for k, a, c in
+                                     zip(kv, paired(q, 'k', kv, 'mean_dist', 0.0), paired(q, 'k', kv, 'mean_dist_correct', 0.0))))
