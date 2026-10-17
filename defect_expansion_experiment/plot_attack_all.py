@@ -1,6 +1,7 @@
 """Figures for attack_all_points.csv: normalised spread and depleted-class recall, coverage gap vs
 random deletion, small multiples (rows: tree + white-box, SVM + HopSkipJump; cols: settings).
 Spread is normalised per seed by that seed's defect-free run; bands are 95% intervals.
+Also shortcut_attack_all.csv: shortcut share, normalised spread and accuracy against strength.
 
 Usage (from repo root):  uv run python defect_expansion_experiment/plot_attack_all.py OUT_DIR
 """
@@ -65,3 +66,36 @@ def figure(col, ylabel, fname, norm, legend_loc):
 
 figure('spread', 'spread (× defect-free)', 'attack_all_spread.pdf', norm=True, legend_loc='upper left')
 figure('recall', 'recall, depleted class', 'attack_all_recall.pdf', norm=False, legend_loc='lower left')
+
+
+def shortcut_figure(fname='shortcut_attack_all.pdf'):
+    sc = pl.read_csv(HERE / 'shortcut_attack_all.csv'); corr = sorted(sc['corr'].unique().to_list())
+    panels = [('spur_frac', 'shortcut share of movement'), ('spread', 'spread (× no shortcut)'),
+              ('vacc', 'test accuracy')]
+    fig, axes = plt.subplots(1, 3, figsize=(7.2, 2.6))
+    for mk, ds, colr, ls, lab in [('tree', 'iris', GAP, '-', 'Tree, iris'), ('tree', 'wine', GAP, '--', 'Tree, wine'),
+                                  ('svm', 'iris', RAND, '-', 'SVM, iris'), ('svm', 'wine', RAND, '--', 'SVM, wine')]:
+        q = sc.filter((pl.col('model') == mk) & (pl.col('dataset') == ds))
+        base = q.filter(pl.col('corr') == 0).sort('seed')['spread'].to_numpy()
+        for ax, (col, ylabel) in zip(axes, panels):
+            m, c = [], []
+            for k in corr:
+                r = q.filter(pl.col('corr') == k).sort('seed'); v = r[col].to_numpy()
+                if col == 'spread':   # drop cells where under half the folds give a spread
+                    v = v / base if r['valid_folds_spread'].sum() >= 2.5 * len(r) else np.full(len(r), np.nan)
+                m.append(np.nanmean(v)); c.append(1.96 * np.nanstd(v, ddof=1) / np.sqrt(np.sum(~np.isnan(v))))
+            m, c = np.array(m), np.array(c)
+            ax.fill_between(corr, m - c, m + c, color=colr, alpha=0.12, lw=0)
+            ax.plot(corr, m, color=colr, ls=ls, lw=1.8, marker='o', ms=3.5, mec='white', mew=0.8, label=lab)
+            ax.set_ylabel(ylabel); ax.set_xlabel('shortcut strength'); ax.set_xticks(corr)
+    axes[1].axhline(1.0, color=MUTED, lw=0.8, ls=(0, (2, 3)))
+    for ax in axes:
+        ax.grid(axis='y', color=GRID, lw=0.6); ax.set_axisbelow(True)
+        for s in ('top', 'right'):
+            ax.spines[s].set_visible(False)
+    axes[0].legend(frameon=False, fontsize=7.5, loc='upper left')
+    fig.tight_layout(); fig.savefig(OUT / fname); plt.close(fig)
+    print('wrote', OUT / fname)
+
+
+shortcut_figure()
