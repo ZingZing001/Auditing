@@ -33,7 +33,7 @@ def per_seed(q, frac, structure, col, base=None):
 
 def attack_all_figure(col, ylabel, fname, norm):
     df = pl.read_csv(HERE / 'attack_all_points.csv')
-    fig, axes = plt.subplots(2, 3, figsize=(rs.WIDTH, 4.6), sharex=True, sharey=True, layout='constrained')
+    fig, axes = plt.subplots(2, 3, figsize=(rs.WIDTH, 4.1), sharex=True, sharey=True, layout='constrained')
     x = np.array(FR) * 100
     for i, (mk, mlabel) in enumerate(MODELS):
         for j, (sk, slabel) in enumerate(SETTINGS):
@@ -62,8 +62,8 @@ def attack_all_figure(col, ylabel, fname, norm):
 
 def shortcut_figure(fname='shortcut_attack_all.pdf'):
     sc = pl.read_csv(HERE / 'shortcut_attack_all.csv'); corr = sorted(sc['corr'].unique().to_list())
-    rows = [('spur_frac', 'Shortcut movement share'), ('spread', 'Normalised spread\n(× no shortcut)'), ('vacc', 'Test accuracy')]
-    fig, axes = plt.subplots(3, 2, figsize=(rs.WIDTH, 5.4), sharex=True, layout='constrained')
+    rows = [('spur_frac', 'Shortcut share'), ('spread', 'Spread ratio'), ('vacc', 'Test accuracy')]
+    fig, axes = plt.subplots(3, 2, figsize=(rs.WIDTH, 4.5), sharex=True, layout='constrained')
     for j, (ds, dlabel) in enumerate([('iris', 'Iris'), ('wine', 'Wine')]):
         for model in ('tree', 'svm'):
             q = sc.filter((pl.col('model') == model) & (pl.col('dataset') == ds))

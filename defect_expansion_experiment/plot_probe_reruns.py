@@ -55,7 +55,7 @@ fig.savefig(OUT / 'probe_label_noise.pdf'); plt.close(fig)
 # ---- outliers (k sweep against the matched 50-seed no-outlier baseline): columns = tree depth
 kp, kb = pl.read_parquet(A / 'results_kplateau.parquet'), pl.read_parquet(A / 'results_kplateau_baseline.parquet')
 kv = sorted(kp['k'].unique().to_list())
-fig, axes = plt.subplots(1, 2, figsize=(rs.WIDTH, 2.9), sharey=True, layout='constrained')
+fig, axes = plt.subplots(1, 2, figsize=(rs.WIDTH, 2.5), sharey=True, layout='constrained')
 for ax, (model, name), letter in zip(axes, [('tree_d3', 'Depth-3 tree'), ('tree_d10', 'Depth-10 tree')], 'ab'):
     q = pl.concat([kb.filter(pl.col('model') == model), kp.filter(pl.col('model') == model)])
     for suf, role in PROBES:
