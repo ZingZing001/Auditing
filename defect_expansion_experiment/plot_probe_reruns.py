@@ -4,6 +4,7 @@ with only correctly classified points attacked. Ratios are paired per seed; band
   probe_label_noise.pdf  spread vs noise-free run (tree + DTA, SVM + HSJ; iris, wine) and accuracy
   probe_outliers.pdf     spread vs matched no-outlier baseline over outlier distance k (depth-3/10 trees)
   probe_leakage.pdf      measured vs honest accuracy, and leaked / clean attack margin
+Also prints the dimension-padding contrasts (results_dimensionality, results_fitvsmeasure).
 Also prints the coverage-gap excess (% of random arm) for the SVM every-point rerun.
 
 Usage (from repo root):  uv run python defect_expansion_experiment/plot_probe_reruns.py OUT_DIR
@@ -124,3 +125,15 @@ for model in ['tree_d3', 'tree_d10']:
     q = pl.concat([kb.filter(pl.col('model') == model), kp.filter(pl.col('model') == model)])
     print(f'  {model}: ' + '  '.join(f'k{k:g} {np.nanmean(a):.2f}/{np.nanmean(c):.2f}' for k, a, c in
                                      zip(kv, paired(q, 'k', kv, 'mean_dist', 0.0), paired(q, 'k', kv, 'mean_dist_correct', 0.0))))
+print('\nDimension padding (Section sec:dims): Cohen d of raw spread, coverage gap vs random deletion at 50% removal')
+def cohen(a, b):
+    a, b = np.asarray(a, float), np.asarray(b, float); a, b = a[~np.isnan(a)], b[~np.isnan(b)]
+    return (a.mean() - b.mean()) / np.sqrt(((len(a) - 1) * a.var(ddof=1) + (len(b) - 1) * b.var(ddof=1)) / (len(a) + len(b) - 2))
+fv = pl.read_parquet(A / 'results_fitvsmeasure.parquet'); dm = pl.read_parquet(A / 'results_dimensionality.parquet')
+for m in sorted(fv['m'].unique().to_list()):
+    q = fv.filter((pl.col('m') == m) & (pl.col('frac') == 0.5)); sp, ra = (q.filter(pl.col('structure') == s) for s in ('spatial', 'random'))
+    cells = [f'{c[7:]} {cohen(sp[c], ra[c]):+.2f} / {cohen(sp[c + "_correct"], ra[c + "_correct"]):+.2f}'
+             for c in ('spread_measure_full', 'spread_fit_full', 'spread_fit_real')]
+    rec = [dm.filter((pl.col('m') == m) & (pl.col('frac') == 0.85) & (pl.col('structure') == s))['min_recall'].mean() for s in ('spatial', 'random')]
+    print(f'  m={m:3d} (every / correct)  ' + '   '.join(cells) + f'   recall@85% gap {rec[0]:.2f} random {rec[1]:.2f}'
+          f'   prediction disagreement {q["disagree"].mean():.3f}')
